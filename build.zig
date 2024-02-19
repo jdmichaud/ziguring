@@ -11,7 +11,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    std.log.debug("{}\n", . { target. });
     lib.addIncludePath(upstream.path("src/include"));
 
     // TODO: Auto generate this file
@@ -56,48 +55,51 @@ pub fn build(b: *std.Build) void {
       "src/nolibc.c",
     };
 
-    var flags = std.ArrayList([]const u8).init(b.allocator);
-
-    // const constant_flags: []const []const u8 = &.{
-    flags.appendSlice(&.{
+    const config_h = b.addConfigHeader(.{
+      .style = .blank,
+      .include_path = "config-host.h",
+    }, .{
+      .CONFIG_NOLIBC = switch (target.result.cpu.arch) {
+        // https://github.com/axboe/liburing/blob/liburing-2.5/configure#L392
+        .aarch64, .riscv32, .riscv64, .x86, .x86_64 => {},
+        else => null,
+      },
       // TODO: All these defines come from config-host.h which is generated
       // by configure.
-      "-DCONFIG_HAVE_KERNEL_RWF_T",
-      "-DCONFIG_HAVE_KERNEL_TIMESPEC",
-      "-DCONFIG_HAVE_OPEN_HOW",
-      "-DCONFIG_HAVE_STATX",
-      "-DCONFIG_HAVE_GLIBC_STATX",
-      "-DCONFIG_HAVE_CXX",
-      "-DCONFIG_HAVE_UCONTEXT",
-      "-DCONFIG_HAVE_STRINGOP_OVERFLOW",
-      "-DCONFIG_HAVE_ARRAY_BOUNDS",
-      "-DCONFIG_HAVE_NVME_URING",
-      "-DCONFIG_HAVE_FANOTIFY",
-      "-DCONFIG_HAVE_FUTEXV",
-      // end auto generated defines
-
+      .CONFIG_HAVE_KERNEL_RWF_T = {},
+      .CONFIG_HAVE_KERNEL_TIMESPEC = {},
+      .CONFIG_HAVE_OPEN_HOW = {},
+      .CONFIG_HAVE_STATX = {},
+      .CONFIG_HAVE_GLIBC_STATX = {},
+      .CONFIG_HAVE_CXX = {},
+      .CONFIG_HAVE_UCONTEXT = {},
+      .CONFIG_HAVE_STRINGOP_OVERFLOW = {},
+      .CONFIG_HAVE_ARRAY_BOUNDS = {},
+      .CONFIG_HAVE_NVME_URING = {},
+      .CONFIG_HAVE_FANOTIFY = {},
+      .CONFIG_HAVE_FUTEXV = {},
       // AT_FDCWD does not seem to be defined for some reason
       // TODO: Remove this kludge
-      "-DAT_FDCWD=-100",
+      .AT_FDCWD = -100,
+    });
+    // config_h.addValues(common_config);
+    lib.addConfigHeader(config_h);
+    lib.installConfigHeader(config_h, .{});
 
+    var flags = std.ArrayList([]const u8).init(b.allocator);
+    
+    flags.appendSlice(&.{
+      "-DCONFIG_HAVE_FUTEXV",
       "-D_LARGEFILE_SOURCE",
       "-D_FILE_OFFSET_BITS=64",
       "-DLIBURING_INTERNAL",
       "-ffreestanding",
       "-fno-builtin", 
-      "-nodefaultlibs",
-      "-nostdlib", 
       "-Wall",
       "-Wextra",  
       "-Wno-unused-parameter",
     }) catch unreachable;
    
-    flags.appendSlice(switch (target.result.cpu.arch) {
-      // https://github.com/axboe/liburing/blob/liburing-2.5/configure#L392
-      .aarch64, .riscv32, .riscv64, .x86, .x86_64 => &.{ "-DCONFIG_NOLIBC" },
-      else => &.{},
-    }) catch unreachable;
-
     flags.appendSlice(switch (optimize) {
       .Debug => &.{
         "-ggdb3",
@@ -113,6 +115,12 @@ pub fn build(b: *std.Build) void {
       .ReleaseSmall => &.{
         "-Os", 
       },
+    }) catch unreachable;
+
+    flags.appendSlice(switch (target.result.cpu.arch) {
+      // https://github.com/axboe/liburing/blob/liburing-2.5/configure#L392
+      .aarch64, .riscv32, .riscv64, .x86, .x86_64 => &.{ "-nostdlib", "-nodefaultlibs" },
+      else => &.{},
     }) catch unreachable;
 
     lib.addCSourceFiles(.{
