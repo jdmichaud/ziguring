@@ -11,7 +11,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    std.log.debug("{}\n", . { target. });
     lib.addIncludePath(upstream.path("src/include"));
 
     // TODO: Auto generate this file
