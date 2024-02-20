@@ -1,5 +1,37 @@
 const std = @import("std");
 
+fn generate_header(b: *std.Build, dependency: *std.Build.Dependency,
+  path: []const u8, content: []const u8) void {
+  var file = std.fs.createFileAbsolute(dependency.path(path).getPath(b), .{
+    .truncate = true,
+  }) catch @panic("Couldn't write to file");
+  _ = file.write(content) catch @panic("Couldn't write to file");
+}
+
+const compat_h_content =
+  \\/* SPDX-License-Identifier: MIT */
+  \\#ifndef LIBURING_COMPAT_H
+  \\#define LIBURING_COMPAT_H
+  \\
+  \\#include <linux/time_types.h>
+  \\/* <linux/time_types.h> is included above and not needed again */
+  \\#define UAPI_LINUX_IO_URING_H_SKIP_LINUX_TIME_TYPES_H 1
+  \\
+  \\#include <linux/openat2.h>
+  \\
+  \\#endif
+  ;
+const io_uring_version_h_content =
+  \\ /* SPDX-License-Identifier: MIT */
+  \\ #ifndef LIBURING_VERSION_H
+  \\ #define LIBURING_VERSION_H
+  \\ 
+  \\ #define IO_URING_VERSION_MAJOR 2
+  \\ #define IO_URING_VERSION_MINOR 6
+  \\ 
+  \\ #endif
+  ;
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -7,7 +39,7 @@ pub fn build(b: *std.Build) void {
     const upstream = b.dependency("liburing", .{});
 
     const lib = b.addStaticLibrary(.{
-        .name = "liburing",
+        .name = "uring",
         .target = target,
         .optimize = optimize,
     });
@@ -15,36 +47,6 @@ pub fn build(b: *std.Build) void {
 
     // TODO: Auto generate this file
     // lib.addIncludePath(upstream.path("config-host.h"));
-
-    // gcc -D_GNU_SOURCE 
-    //  -Iinclude/ 
-    //  -include ../config-host.h 
-    //  -D_LARGEFILE_SOURCE
-    //  -D_FILE_OFFSET_BITS=64
-    //  -nostdlib
-    //  -nodefaultlibs
-    //  -ffreestanding
-    //  -fno-builtin
-    //  -fno-stack-protector
-    //  -MT "setup.ol
-    //  -MMD
-    //  -MP
-    //  -MF
-    //  "setup.ol.d"
-    //  -O3
-    //  -Wall
-    //  -Wextra
-    //  -fno-stack-protector
-    //  -Wno-unused-parameter
-    //  -DLIBURING_INTERNAL 
-    //  -nostdlib
-    //  -nodefaultlibs
-    //  -ffreestanding
-    //  -fno-builtin
-    //  -fno-stack-protector
-    //  -c
-    //  -o setup.ol
-    //  setup.c
 
     const lib_srcs = &.{
       "src/setup.c",
@@ -57,7 +59,6 @@ pub fn build(b: *std.Build) void {
 
     var flags = std.ArrayList([]const u8).init(b.allocator);
 
-    // const constant_flags: []const []const u8 = &.{
     flags.appendSlice(&.{
       // TODO: All these defines come from config-host.h which is generated
       // by configure.
@@ -114,6 +115,9 @@ pub fn build(b: *std.Build) void {
       },
     }) catch unreachable;
 
+    generate_header(b, upstream, "src/include/liburing/compat.h", compat_h_content);
+    generate_header(b, upstream, "src/include/liburing/io_uring_version.h", io_uring_version_h_content);
+
     lib.addCSourceFiles(.{
       .dependency = upstream,
       .files = lib_srcs,
@@ -121,5 +125,10 @@ pub fn build(b: *std.Build) void {
     });
 
     b.installArtifact(lib);
+    lib.installHeader(upstream.path("src/include/liburing.h").getPath(b), "liburing.h");
+    lib.installHeader(upstream.path("src/include/liburing/barrier.h").getPath(b), "liburing/barrier.h");
+    lib.installHeader(upstream.path("src/include/liburing/compat.h").getPath(b), "liburing/compat.h");
+    lib.installHeader(upstream.path("src/include/liburing/io_uring.h").getPath(b), "liburing/io_uring.h");
+    lib.installHeader(upstream.path("src/include/liburing/io_uring_version.h").getPath(b), "liburing/io_uring_version.h");
     lib.linkLibC();
 }
